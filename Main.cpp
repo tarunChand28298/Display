@@ -4,13 +4,76 @@ int width = 1000;
 int height = 600;
 bool running = false;
 HWND mainWindowHandle = nullptr;
-int* backbuffer = nullptr;
-BITMAPINFO backbufferInfo;
+int* pixelBuffer = nullptr;
+BITMAPINFO pixelbufferInfo;
 
-void PresentBackbufferToWindow() 
+//TestCode:
+int xPos = 100;
+int yPos = 100;
+
+void PutPixel(int x, int y, unsigned char r, unsigned char g, unsigned char b, unsigned char p) {
+	int index = 0;
+	int colour = 0;
+	
+	//calculate colour:
+	colour = p;
+	colour <<= 8;
+	colour |= r;
+	colour <<= 8;
+	colour |= g;
+	colour <<= 8;
+	colour |= b;
+
+	//calculate index:
+	index = (width*y) + x;
+
+	//Write to pixelbuffer:
+	pixelBuffer[index] = colour;
+}
+
+void DrawTestRectangle(int x, int y, int width, int height) {
+	for (int i = x; i < x + width; i++) {
+		for (int j = y; j < y+height; j++) {
+			PutPixel(i, j, 255, 255, 255, 255);
+		}
+	}
+}
+//TestCode end.
+
+
+void Update() {
+	xPos++;
+	if (xPos > 400) {
+		xPos = 100;
+	}
+	yPos++;
+	if (yPos > 400) {
+		yPos = 100;
+	}
+}
+void ClearPixelbuffer() {
+	for (int i = 0; i < height*width; i++) {
+		//colour is represented as: 0xPPRRGGBB (P=padding, R=red, G=green, B=blue) (padding will later be used as alpha)
+		pixelBuffer[i] = 0x000000;
+	}
+}
+void Draw() {
+	DrawTestRectangle(xPos, yPos, 100, 100);
+}
+void PresentPixelbufferToWindow() 
 {
 	HDC currentDeviceContext = GetDC(mainWindowHandle);
-	StretchDIBits(currentDeviceContext, 0, 0, width, height, 0, 0, width, height, backbuffer, &backbufferInfo, DIB_RGB_COLORS, SRCCOPY);
+	StretchDIBits(currentDeviceContext, 0, 0, width, height, 0, 0, width, height, pixelBuffer, &pixelbufferInfo, DIB_RGB_COLORS, SRCCOPY);
+	ReleaseDC(mainWindowHandle, currentDeviceContext);
+}
+
+void UpdateMaster() {
+	Update();
+}
+void DrawMaster() {
+	ClearPixelbuffer();
+	Draw();
+	PresentPixelbufferToWindow();
 }
 
 LRESULT CALLBACK MainWindowProcedure(HWND windowHandle, UINT message, WPARAM wparam, LPARAM lparam) 
@@ -36,7 +99,6 @@ LRESULT CALLBACK MainWindowProcedure(HWND windowHandle, UINT message, WPARAM wpa
 
 	return DefWindowProc(windowHandle, message, wparam, lparam);
 }
-
 int main() 
 {
 	//Setup:
@@ -59,19 +121,16 @@ int main()
 		ShowWindow(mainWindowHandle, SW_SHOW);
 	}
 	{
-		//Create backbuffer:
-		backbufferInfo.bmiHeader.biSize = sizeof(backbufferInfo.bmiHeader);
-		backbufferInfo.bmiHeader.biWidth = width;
-		backbufferInfo.bmiHeader.biHeight = height;
-		backbufferInfo.bmiHeader.biPlanes = 1;
-		backbufferInfo.bmiHeader.biBitCount = sizeof(int) * 8;
-		backbufferInfo.bmiHeader.biCompression = BI_RGB;
+		//Create pixelbuffer:
+		pixelbufferInfo.bmiHeader.biSize = sizeof(pixelbufferInfo.bmiHeader);
+		pixelbufferInfo.bmiHeader.biWidth = width;
+		pixelbufferInfo.bmiHeader.biHeight = height;
+		pixelbufferInfo.bmiHeader.biPlanes = 1;
+		pixelbufferInfo.bmiHeader.biBitCount = sizeof(int) * 8;
+		pixelbufferInfo.bmiHeader.biCompression = BI_RGB;
 
-		backbuffer = new int[width*height];
-		for (int i = 0; i < height*width; i++) {
-			//in little endian architectures, colour is represented as: 0xPPRRGGBB (P=padding, R=red, G=green, B=blue) (padding will later be used as alpha)
-			backbuffer[i] = 0x000000;
-		}
+		pixelBuffer = new int[width*height];
+		ClearPixelbuffer();
 	}
 
 	//Main loop:
@@ -80,19 +139,22 @@ int main()
 		{
 			//Handle window messages:
 			MSG message = {};
-			while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE))
-			{
+			while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
 				TranslateMessage(&message);
 				DispatchMessage(&message);
 			}
 		}
 		{
-			//render from backbuffer:
-			PresentBackbufferToWindow();
+			//Update:
+			UpdateMaster();
+		}
+		{
+			//render:
+			DrawMaster();
 		}
 	}
 
 	//clean up:
-	delete[] backbuffer;
-	return 0;
+	delete[] pixelBuffer;
+	return EXIT_SUCCESS;
 }
